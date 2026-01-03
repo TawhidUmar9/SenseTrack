@@ -9,10 +9,9 @@ import android.hardware.SensorEventListener;
 import android.hardware.SensorManager;
 import android.net.Uri;
 import android.os.Bundle;
-import android.util.Log;
 import android.view.KeyEvent;
 import android.widget.Button;
-import android.widget.RadioButton;
+import android.widget.CompoundButton;
 import android.widget.RadioGroup;
 import android.widget.TextView;
 import android.widget.Toast;
@@ -20,6 +19,7 @@ import androidx.activity.result.ActivityResultLauncher;
 import androidx.activity.result.contract.ActivityResultContracts;
 import androidx.appcompat.app.AppCompatActivity;
 import androidx.documentfile.provider.DocumentFile;
+import com.google.android.material.materialswitch.MaterialSwitch;
 import java.io.OutputStream;
 import java.text.SimpleDateFormat;
 import java.util.ArrayList;
@@ -44,10 +44,12 @@ public class MainActivity extends AppCompatActivity implements SensorEventListen
     private Button btnAction, btnSelectDir;
     private TextView tvCurrentStep, tvNextStep, tvCurrentDir;
     private RadioGroup rgRakats;
+    private MaterialSwitch swBlindMode; // The new Switch
 
-    // --- SALAT SEQUENCE LOGIC ---
+    // --- LOGIC ---
     private ArrayList<String> salatSequence = new ArrayList<>();
     private int currentStepIndex = 0;
+    private boolean isBlindMode = false; // State to track mode
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
@@ -59,8 +61,9 @@ public class MainActivity extends AppCompatActivity implements SensorEventListen
         btnSelectDir = findViewById(R.id.btnSelectDir);
         tvCurrentStep = findViewById(R.id.tvCurrentStep);
         tvNextStep = findViewById(R.id.tvNextStep);
-//        tvCurrentDir = findViewById(R.id.tvCurrentDir); // Ensure you have a TextView for this, or remove this line
+        tvCurrentDir = findViewById(R.id.tvCurrentDir);
         rgRakats = findViewById(R.id.rgRakats);
+        swBlindMode = findViewById(R.id.swBlindMode); // Bind Switch
 
         // 2. Initialize Sensors
         sensorManager = (SensorManager) getSystemService(Context.SENSOR_SERVICE);
@@ -69,39 +72,55 @@ public class MainActivity extends AppCompatActivity implements SensorEventListen
             gyroscope = sensorManager.getDefaultSensor(Sensor.TYPE_GYROSCOPE);
         }
 
-        // 3. Setup File Storage Logic
         setupStorageLogic();
 
-        // 4. Button Listeners
+        // 3. Listeners
         btnSelectDir.setOnClickListener(v -> directoryPicker.launch(null));
 
         btnAction.setOnClickListener(v -> {
-            if (!isRecording) {
+            if (!isRecording)
                 startRecording();
-            } else {
+            else
                 stopRecording();
+        });
+
+        // Toggle UI logic based on Switch
+        swBlindMode.setOnCheckedChangeListener((buttonView, isChecked) -> {
+            isBlindMode = isChecked;
+            if (isChecked) {
+                // Hide/Disable Labeled Mode UI
+                rgRakats.setAlpha(0.5f);
+                for (int i = 0; i < rgRakats.getChildCount(); i++)
+                    rgRakats.getChildAt(i).setEnabled(false);
+                tvCurrentStep.setText("Blind Mode");
+                tvNextStep.setText("No Sequence");
+            } else {
+                // Enable Labeled Mode UI
+                rgRakats.setAlpha(1.0f);
+                for (int i = 0; i < rgRakats.getChildCount(); i++)
+                    rgRakats.getChildAt(i).setEnabled(true);
+                tvCurrentStep.setText("Ready");
+                tvNextStep.setText("Select Rakats");
             }
         });
     }
 
     // =========================================================
-    // VOLUME BUTTON CONTROL (NAVIGATION)
+    // VOLUME BUTTON (IGNORED IN BLIND MODE)
     // =========================================================
     @Override
     public boolean onKeyDown(int keyCode, KeyEvent event) {
-        if (isRecording) {
+        // Only use Volume Buttons if Recording AND NOT in Blind Mode
+        if (isRecording && !isBlindMode) {
             if (keyCode == KeyEvent.KEYCODE_VOLUME_DOWN) {
-                // MOVE FORWARD
                 if (currentStepIndex < salatSequence.size() - 1) {
                     currentStepIndex++;
                     updateStepDisplay();
                 } else {
                     Toast.makeText(this, "Sequence Finished", Toast.LENGTH_SHORT).show();
                 }
-                return true; // Returns true to block system volume change
-            }
-            else if (keyCode == KeyEvent.KEYCODE_VOLUME_UP) {
-                // MOVE BACKWARD (Undo)
+                return true;
+            } else if (keyCode == KeyEvent.KEYCODE_VOLUME_UP) {
                 if (currentStepIndex > 0) {
                     currentStepIndex--;
                     updateStepDisplay();
@@ -112,52 +131,35 @@ public class MainActivity extends AppCompatActivity implements SensorEventListen
         return super.onKeyDown(keyCode, event);
     }
 
-    // =========================================================
-    // SALAT SEQUENCE LOGIC
-    // =========================================================
     private void generateSalatSequence() {
         salatSequence.clear();
-
-        // Determine number of Rakats
         int rakats = 2;
         int selectedId = rgRakats.getCheckedRadioButtonId();
-        if (selectedId == R.id.rb3) rakats = 3;
-        else if (selectedId == R.id.rb4) rakats = 4;
+        if (selectedId == R.id.rb3)
+            rakats = 3;
+        else if (selectedId == R.id.rb4)
+            rakats = 4;
 
-        // Build the List
-        // Start with Takbeer
         salatSequence.add("Takbeer/Standing");
-
         for (int i = 1; i <= rakats; i++) {
-            // Standard Rakat Cycle
             salatSequence.add("Standing (Rakat " + i + ")");
             salatSequence.add("Ruku (Rakat " + i + ")");
             salatSequence.add("Standing (Post-Ruku)");
             salatSequence.add("Sujud 1 (Rakat " + i + ")");
             salatSequence.add("Sitting Between Sujud");
             salatSequence.add("Sujud 2 (Rakat " + i + ")");
-
-            // Logic for Tashahhud (Sitting)
-            // Sit after 2nd Rakat AND at the very end
-            if (i == 2 || i == rakats) {
+            if (i == 2 || i == rakats)
                 salatSequence.add("Tashahhud (Sitting)");
-            } else {
-                // If not sitting, we stand up for next rakat
+            else
                 salatSequence.add("Standing Up");
-            }
         }
-
-        salatSequence.add("Salam (Right)");
-        salatSequence.add("Salam (Left)");
-        salatSequence.add("Complete");
+        salatSequence.add("Salam");
     }
 
     private void updateStepDisplay() {
-        if (salatSequence.isEmpty()) return;
-
-        String current = salatSequence.get(currentStepIndex);
-        tvCurrentStep.setText(current);
-
+        if (salatSequence.isEmpty())
+            return;
+        tvCurrentStep.setText(salatSequence.get(currentStepIndex));
         if (currentStepIndex < salatSequence.size() - 1) {
             tvNextStep.setText("Next: " + salatSequence.get(currentStepIndex + 1));
         } else {
@@ -174,58 +176,77 @@ public class MainActivity extends AppCompatActivity implements SensorEventListen
             return;
         }
 
-        if (accelerometer == null || gyroscope == null) {
-            Toast.makeText(this, "Sensors not found!", Toast.LENGTH_SHORT).show();
-            return;
-        }
-
-        // 1. Prepare Sequence
-        generateSalatSequence();
-        currentStepIndex = 0;
-        updateStepDisplay();
-
-        // 2. Prepare Data Buffer
         isRecording = true;
         dataBuffer.clear();
         dataBuffer.add("Timestamp,Label,SensorType,X,Y,Z");
 
-        // 3. Register Sensors
-        sensorManager.registerListener(this, accelerometer, SensorManager.SENSOR_DELAY_GAME);
-        sensorManager.registerListener(this, gyroscope, SensorManager.SENSOR_DELAY_GAME);
+        // --- CHECK MODE ---
+        int samplingRate;
+        if (isBlindMode) {
+            samplingRate = SensorManager.SENSOR_DELAY_NORMAL;
+            tvCurrentStep.setText("Recording (Blind)...");
+            tvNextStep.setText("");
+        } else {
+            // Training Mode: High Speed (Game = 20ms / 50Hz)
+            generateSalatSequence();
+            currentStepIndex = 0;
+            updateStepDisplay();
+            samplingRate = SensorManager.SENSOR_DELAY_GAME;
 
-        // 4. Update UI
+            // Lock UI
+            swBlindMode.setEnabled(false);
+            for (int i = 0; i < rgRakats.getChildCount(); i++)
+                rgRakats.getChildAt(i).setEnabled(false);
+        }
+
+        if (accelerometer != null)
+            sensorManager.registerListener(this, accelerometer, samplingRate);
+        if (gyroscope != null)
+            sensorManager.registerListener(this, gyroscope, samplingRate);
+
         btnAction.setText("Stop & Save");
-        // Disable Rakat selection while recording
-        for (int i = 0; i < rgRakats.getChildCount(); i++) rgRakats.getChildAt(i).setEnabled(false);
-
-        Toast.makeText(this, "Recording... Press Vol Down for Next Step", Toast.LENGTH_LONG).show();
     }
 
     private void stopRecording() {
         isRecording = false;
         sensorManager.unregisterListener(this);
-
         saveToCsv();
 
         // Reset UI
         btnAction.setText("Start Recording");
-        tvCurrentStep.setText("Ready");
-        tvNextStep.setText("");
-        for (int i = 0; i < rgRakats.getChildCount(); i++) rgRakats.getChildAt(i).setEnabled(true);
+        swBlindMode.setEnabled(true); // Re-enable switch
+
+        if (!isBlindMode) {
+            tvCurrentStep.setText("Ready");
+            for (int i = 0; i < rgRakats.getChildCount(); i++)
+                rgRakats.getChildAt(i).setEnabled(true);
+        } else {
+            tvCurrentStep.setText("Blind Mode Ready");
+        }
     }
 
     // =========================================================
-    // SENSOR EVENT LISTENER
+    // SENSOR EVENT
     // =========================================================
     @Override
     public void onSensorChanged(SensorEvent event) {
-        if (isRecording && !salatSequence.isEmpty()) {
+        if (isRecording) {
             String type = (event.sensor.getType() == Sensor.TYPE_ACCELEROMETER) ? "ACCEL" : "GYRO";
+            String label;
 
-            // Get Label from our dynamic list
-            String currentLabel = salatSequence.get(currentStepIndex);
+            if (isBlindMode) {
+                // In blind mode, we don't know the posture. Use a generic label.
+                label = "Blind_Data";
+            } else {
+                // In training mode, get the specific step
+                if (!salatSequence.isEmpty()) {
+                    label = salatSequence.get(currentStepIndex);
+                } else {
+                    label = "Unknown";
+                }
+            }
 
-            String record = event.timestamp + "," + currentLabel + "," + type + "," +
+            String record = event.timestamp + "," + label + "," + type + "," +
                     event.values[0] + "," + event.values[1] + "," + event.values[2];
             dataBuffer.add(record);
         }
@@ -233,51 +254,45 @@ public class MainActivity extends AppCompatActivity implements SensorEventListen
 
     @Override
     public void onAccuracyChanged(Sensor sensor, int accuracy) {
-        // Not used
     }
 
     // =========================================================
-    // FILE STORAGE LOGIC
+    // FILE STORAGE
     // =========================================================
     private void setupStorageLogic() {
         prefs = getSharedPreferences("SenseTrackPrefs", MODE_PRIVATE);
-
-        // Handle the user selecting a folder
         directoryPicker = registerForActivityResult(
                 new ActivityResultContracts.OpenDocumentTree(),
                 uri -> {
                     if (uri != null) {
                         getContentResolver().takePersistableUriPermission(uri,
                                 Intent.FLAG_GRANT_READ_URI_PERMISSION | Intent.FLAG_GRANT_WRITE_URI_PERMISSION);
-
                         saveDirectoryUri = uri;
                         prefs.edit().putString("save_directory_uri", uri.toString()).apply();
-
-                        // Optional: Update text view to show folder name
                         DocumentFile df = DocumentFile.fromTreeUri(this, uri);
-                        if(df != null && tvCurrentDir != null) tvCurrentDir.setText("Folder: " + df.getName());
+                        if (df != null && tvCurrentDir != null)
+                            tvCurrentDir.setText("Folder: " + df.getName());
                     }
-                }
-        );
-
-        // Load saved folder on startup
+                });
         String savedUri = prefs.getString("save_directory_uri", null);
         if (savedUri != null) {
             saveDirectoryUri = Uri.parse(savedUri);
             DocumentFile df = DocumentFile.fromTreeUri(this, saveDirectoryUri);
-            if(df != null && tvCurrentDir != null) tvCurrentDir.setText("Folder: " + df.getName());
+            if (df != null && tvCurrentDir != null)
+                tvCurrentDir.setText("Folder: " + df.getName());
         }
     }
 
     private void saveToCsv() {
         try {
+            // Append mode to filename so you know which is which
+            String modePrefix = isBlindMode ? "BLIND_" : "LABELED_";
             String timestamp = new SimpleDateFormat("yyyyMMdd_HHmmss", Locale.getDefault()).format(new Date());
-            String filename = "salat_data_" + timestamp + ".csv";
+            String filename = modePrefix + "salat_" + timestamp + ".csv";
 
             DocumentFile directory = DocumentFile.fromTreeUri(this, saveDirectoryUri);
             if (directory != null && directory.exists()) {
                 DocumentFile newFile = directory.createFile("text/csv", filename);
-
                 if (newFile != null) {
                     try (OutputStream outputStream = getContentResolver().openOutputStream(newFile.getUri())) {
                         if (outputStream != null) {
