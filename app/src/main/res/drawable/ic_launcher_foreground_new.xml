@@ -1,0 +1,23 @@
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="108dp"
+    android:height="108dp"
+    android:viewportWidth="108"
+    android:viewportHeight="108">
+    <!-- Sensor icon centered in adaptive icon safe zone -->
+    <group
+        android:scaleX="0.8"
+        android:scaleY="0.8"
+        android:translateX="10.8"
+        android:translateY="10.8">
+        <!-- Simple sensor representation -->
+        <path
+            android:fillColor="#4CAF50"
+            android:pathData="M54,27C39.087,27 27,39.087 27,54C27,68.913 39.087,81 54,81C68.913,81 81,68.913 81,54C81,39.087 68.913,27 54,27ZM54,75C42.402,75 33,65.598 33,54C33,42.402 42.402,33 54,33C65.598,33 75,42.402 75,54C75,65.598 65.598,75 54,75Z"/>
+        <path
+            android:fillColor="#FFFFFF"
+            android:pathData="M48,45H60V63H48V45Z"/>
+        <path
+            android:fillColor="#4CAF50"
+            android:pathData="M42,39H66V42H42V39ZM42,66H66V69H42V66ZM39,48H45V60H39V48ZM63,48H69V60H63V48Z"/>
+    </group>
+</vector>
